@@ -66,6 +66,30 @@ export interface DailyStats {
   studyTimeMinutes: number;
 }
 
+/**
+ * Statistiques enrichies d'un deck pour le système de 4 états
+ * 
+ * ÉTATS :
+ * 1. 🔒 JAMAIS COMMENCÉ : unseen === total
+ * 2. 📖 EN DÉCOUVERTE : hasBeenStarted && !isMastered && (due > 0 || discoveryCount > 0)
+ * 3. ⏳ EN SOMMEIL : hasBeenStarted && due === 0 && !isMastered
+ * 4. ✅ MAÎTRISÉ : isMastered (maturePercent >= 80)
+ */
+export interface EnhancedDeckStats {
+  total: number;
+  unseen: number;           // Jamais vues
+  new: number;              // Vues mais is_new = 1
+  learning: number;         // is_new = 0, repetitions < 3
+  review: number;           // repetitions >= 3
+  due: number;              // Disponibles maintenant
+  sleeping: number;         // Vues, pas dues (learning + review non dues)
+  maturePercent: number;    // % de cartes matures
+  nextReviewDate: number | null;  // Timestamp de la prochaine révision
+  hasBeenStarted: boolean;  // Au moins une carte vue
+  isMastered: boolean;      // >80% des cartes vues sont matures
+  discoveryCount: number;   // unseen + new (cartes à découvrir)
+}
+
 // Couleurs par matière
 export const SUBJECT_COLORS: Record<Subject, string> = {
   'maths': '#4CAF50',

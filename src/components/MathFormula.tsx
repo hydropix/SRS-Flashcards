@@ -1,6 +1,6 @@
 /**
  * Composant pour afficher du texte avec des formules mathématiques en LaTeX
- * Utilise KaTeX via CDN dans une WebView (compatible Expo Go)
+ * Version offline : convertit les formules en texte Unicode
  * 
  * Syntaxe supportée :
  * - $...$ pour les formules en ligne
@@ -8,20 +8,181 @@
  */
 
 import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ViewStyle, 
-  TextStyle,
-  Platform
-} from 'react-native';
-import { WebView } from 'react-native-webview';
+import { View, Text, StyleSheet, ViewStyle, TextStyle, Platform } from 'react-native';
 
 interface MathFormulaProps {
   content: string;
   style?: TextStyle;
   containerStyle?: ViewStyle;
+}
+
+// Mapping des lettres grecques
+const GREEK_LETTERS: Record<string, string> = {
+  'alpha': 'α', 'beta': 'β', 'gamma': 'γ', 'delta': 'δ', 'epsilon': 'ε',
+  'zeta': 'ζ', 'eta': 'η', 'theta': 'θ', 'iota': 'ι', 'kappa': 'κ',
+  'lambda': 'λ', 'mu': 'μ', 'nu': 'ν', 'xi': 'ξ', 'omicron': 'ο',
+  'pi': 'π', 'rho': 'ρ', 'sigma': 'σ', 'tau': 'τ', 'upsilon': 'υ',
+  'phi': 'φ', 'chi': 'χ', 'psi': 'ψ', 'omega': 'ω',
+  'Alpha': 'Α', 'Beta': 'Β', 'Gamma': 'Γ', 'Delta': 'Δ', 'Epsilon': 'Ε',
+  'Zeta': 'Ζ', 'Eta': 'Η', 'Theta': 'Θ', 'Iota': 'Ι', 'Kappa': 'Κ',
+  'Lambda': 'Λ', 'Mu': 'Μ', 'Nu': 'Ν', 'Xi': 'Ξ', 'Omicron': 'Ο',
+  'Pi': 'Π', 'Rho': 'Ρ', 'Sigma': 'Σ', 'Tau': 'Τ', 'Upsilon': 'Υ',
+  'Phi': 'Φ', 'Chi': 'Χ', 'Psi': 'Ψ', 'Omega': 'Ω',
+};
+
+// Exposants Unicode
+const SUPERSCRIPTS: Record<string, string> = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵',
+  '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻', '+': '⁺',
+  'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 'f': 'ᶠ',
+  'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ', 'k': 'ᵏ', 'l': 'ˡ',
+  'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ', 'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ',
+  't': 'ᵗ', 'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+  '(': '⁽', ')': '⁾', ' ': ' ',
+};
+
+// Indices Unicode
+const SUBSCRIPTS: Record<string, string> = {
+  '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅',
+  '6': '₆', '7': '₇', '8': '₈', '9': '₉', '-': '₋', '+': '₊',
+  'a': 'ₐ', 'e': 'ₑ', 'i': 'ᵢ', 'j': 'ⱼ', 'o': 'ₒ', 'r': 'ᵣ',
+  'u': 'ᵤ', 'v': 'ᵥ', 'x': 'ₓ', 'y': 'ᵧ', 'k': 'ₖ', 'l': 'ₗ',
+  'm': 'ₘ', 'n': 'ₙ', 'p': 'ₚ', 's': 'ₛ', 't': 'ₜ',
+  '(': '₍', ')': '₎', ' ': ' ',
+};
+
+// Fractions Unicode
+const FRACTIONS: Record<string, string> = {
+  '1/2': '½', '1/3': '⅓', '2/3': '⅔', '1/4': '¼', '3/4': '¾',
+  '1/5': '⅕', '2/5': '⅖', '3/5': '⅗', '4/5': '⅘', '1/6': '⅙',
+  '5/6': '⅚', '1/7': '⅐', '1/8': '⅛', '3/8': '⅜', '5/8': '⅝',
+  '7/8': '⅞', '1/9': '⅑', '1/10': '⅒',
+};
+
+// Symboles mathématiques
+const MATH_SYMBOLS: Record<string, string> = {
+  'times': '×', 'cdot': '·', 'div': '÷', 'pm': '±', 'mp': '∓',
+  'leq': '≤', 'geq': '≥', 'neq': '≠', 'approx': '≈', 'sim': '∼',
+  'infty': '∞', 'infinity': '∞', 'sqrt': '√', 'int': '∫', 'sum': '∑',
+  'prod': '∏', 'cup': '∪', 'cap': '∩', 'subset': '⊂', 'supset': '⊃',
+  'in': '∈', 'notin': '∉', 'forall': '∀', 'exists': '∃', 'nexists': '∄',
+  'emptyset': '∅', 'varnothing': '∅', 'setminus': '\\', 'backslash': '\\',
+  'angle': '∠', 'perp': '⊥', 'parallel': '∥', 'cong': '≅',
+  'to': '→', 'rightarrow': '→', 'leftarrow': '←', 'leftrightarrow': '↔',
+  'Rightarrow': '⇒', 'Leftarrow': '⇐', 'Leftrightarrow': '⇔',
+  'vec': '→', // Simplifié
+  'overline': '̅', // Simplifié
+  'bar': '̄',
+  'hat': '̂',
+  'dot': '̇',
+  'ddot': '̈',
+};
+
+// Fonctions trigonométriques et autres
+const FUNCTIONS: Record<string, string> = {
+  'sin': 'sin', 'cos': 'cos', 'tan': 'tan', 'cot': 'cot',
+  'sec': 'sec', 'csc': 'csc', 'arcsin': 'arcsin', 'arccos': 'arccos',
+  'arctan': 'arctan', 'sinh': 'sinh', 'cosh': 'cosh', 'tanh': 'tanh',
+  'log': 'log', 'ln': 'ln', 'exp': 'exp', 'lim': 'lim',
+  'max': 'max', 'min': 'min', 'sup': 'sup', 'inf': 'inf',
+  'gcd': 'pgcd', 'lcm': 'ppcm',
+};
+
+/**
+ * Convertit un texte en exposants Unicode
+ */
+function toSuperscript(text: string): string {
+  return text.split('').map(c => SUPERSCRIPTS[c] || c).join('');
+}
+
+/**
+ * Convertit un texte en indices Unicode
+ */
+function toSubscript(text: string): string {
+  return text.split('').map(c => SUBSCRIPTS[c] || c).join('');
+}
+
+/**
+ * Parse une formule LaTeX simple et la convertit en texte Unicode
+ */
+function parseLatexToUnicode(latex: string): string {
+  let result = latex;
+
+  // D'abord, normaliser les espaces (espaces multiples → 1 espace)
+  result = result.replace(/\s+/g, ' ').trim();
+
+  // Protéger les espaces dans \text{...}
+  result = result.replace(/\\text\{([^}]+)\}/g, '$1');
+
+  // Fractions \frac{a}{b}
+  // Traiter d'abord les fractions les plus imbriquées
+  let prevResult;
+  do {
+    prevResult = result;
+    result = result.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (match, num, den) => {
+      // Essayer de trouver une fraction Unicode simple
+      const simpleFrac = `${num}/${den}`;
+      if (FRACTIONS[simpleFrac]) {
+        return FRACTIONS[simpleFrac];
+      }
+      // Sinon forme a/b
+      return `${parseLatexToUnicode(num)}/${parseLatexToUnicode(den)}`;
+    });
+  } while (result !== prevResult);
+
+  // Racines \sqrt{...} et \sqrt[n]{...}
+  result = result.replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, (match, n, expr) => {
+    if (n === '2' || n === '') {
+      return `√(${parseLatexToUnicode(expr)})`;
+    }
+    return `√[${n}](${parseLatexToUnicode(expr)})`;
+  });
+  result = result.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');
+
+  // Puissances x^{...}
+  result = result.replace(/([a-zA-Z0-9])\^\{([^}]+)\}/g, (match, base, exp) => {
+    return base + toSuperscript(parseLatexToUnicode(exp));
+  });
+  result = result.replace(/([a-zA-Z0-9])\^([a-zA-Z0-9])/g, (match, base, exp) => {
+    return base + toSuperscript(exp);
+  });
+
+  // Indices x_{...}
+  result = result.replace(/([a-zA-Z0-9])_\{([^}]+)\}/g, (match, base, sub) => {
+    return base + toSubscript(parseLatexToUnicode(sub));
+  });
+  result = result.replace(/([a-zA-Z0-9])_([a-zA-Z0-9])/g, (match, base, sub) => {
+    return base + toSubscript(sub);
+  });
+
+  // Lettres grecques
+  result = result.replace(/\\([a-zA-Z]+)/g, (match, name) => {
+    // Priorité aux lettres grecques
+    if (GREEK_LETTERS[name]) {
+      return GREEK_LETTERS[name];
+    }
+    // Ensuite les symboles mathématiques
+    if (MATH_SYMBOLS[name]) {
+      return MATH_SYMBOLS[name];
+    }
+    // Ensuite les fonctions (on garde le nom)
+    if (FUNCTIONS[name]) {
+      return FUNCTIONS[name];
+    }
+    // Si inconnu, retourner tel quel sans le backslash
+    return match;
+  });
+
+  // Nettoyer les accolades restantes
+  result = result.replace(/\{([^}]+)\}/g, '$1');
+
+  // Remplacer \, \; etc. par un seul espace
+  result = result.replace(/\\,?/g, ' ');
+  
+  // Normaliser à nouveau les espaces
+  result = result.replace(/\s+/g, ' ').trim();
+
+  return result;
 }
 
 /**
@@ -34,168 +195,53 @@ function containsLatex(text: string): boolean {
 /**
  * Extrait les parties texte et les formules LaTeX du contenu
  */
-function parseContent(content: string): Array<{ type: 'text' | 'inline' | 'block'; value: string }> {
-  const parts: Array<{ type: 'text' | 'inline' | 'block'; value: string }> = [];
+function parseContent(content: string): Array<{ type: 'text' | 'formula'; value: string; isBlock?: boolean }> {
+  const parts: Array<{ type: 'text' | 'formula'; value: string; isBlock?: boolean }> = [];
   
-  // Regex pour détecter les formules en bloc $$...$$ ou en ligne $...$
-  // Le ? rend la capture non-greedy pour éviter de capturer trop de texte
   const regex = /(\$\$[\s\S]*?\$\$)|(\$[\s\S]*?\$)/g;
   let lastIndex = 0;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    // Ajouter le texte avant la formule
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index);
-      if (textBefore.trim()) {
-        parts.push({
-          type: 'text',
-          value: textBefore,
-        });
+      // Conserver les espaces normaux, juste normaliser les espaces multiples
+      // et s'assurer qu'on garde un espace à la fin si le texte original en avait un
+      const cleanedText = textBefore.replace(/[ \t]+/g, ' ').replace(/\n+/g, '\n');
+      if (cleanedText) {
+        parts.push({ type: 'text', value: cleanedText });
       }
     }
 
     const matchedText = match[0];
     if (matchedText.startsWith('$$') && matchedText.endsWith('$$')) {
+      const formula = matchedText.slice(2, -2).trim();
       parts.push({
-        type: 'block',
-        value: matchedText.slice(2, -2).trim(),
+        type: 'formula',
+        value: parseLatexToUnicode(formula),
+        isBlock: true,
       });
     } else {
+      const formula = matchedText.slice(1, -1).trim();
       parts.push({
-        type: 'inline',
-        value: matchedText.slice(1, -1).trim(),
+        type: 'formula',
+        value: parseLatexToUnicode(formula),
+        isBlock: false,
       });
     }
 
     lastIndex = match.index + matchedText.length;
   }
 
-  // Ajouter le reste du texte après la dernière formule
   if (lastIndex < content.length) {
     const remainingText = content.slice(lastIndex);
-    if (remainingText.trim()) {
-      parts.push({
-        type: 'text',
-        value: remainingText,
-      });
+    const cleanedRemaining = remainingText.replace(/[ \t]+/g, ' ').replace(/\n+/g, '\n');
+    if (cleanedRemaining) {
+      parts.push({ type: 'text', value: cleanedRemaining });
     }
   }
 
   return parts;
-}
-
-/**
- * Génère le HTML complet avec KaTeX pour une formule
- */
-function generateKatexHtml(formula: string, displayMode: boolean, textColor: string = '#1e293b'): string {
-  const katexUrl = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
-  const katexCss = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-  
-  // Calculer la hauteur en fonction du type de formule
-  const minHeight = displayMode ? '50px' : '28px';
-  const fontSize = displayMode ? '1.15em' : '1em';
-  
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <link rel="stylesheet" href="${katexCss}">
-  <script src="${katexUrl}"></script>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background-color: transparent;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: ${minHeight};
-      height: auto;
-      width: 100%;
-      overflow: hidden;
-    }
-    #formula {
-      color: ${textColor};
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .katex {
-      font-size: ${fontSize};
-      line-height: 1.4;
-    }
-    .katex-display {
-      margin: 0.5em 0;
-    }
-  </style>
-</head>
-<body>
-  <div id="formula"></div>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      try {
-        katex.render(${JSON.stringify(formula)}, document.getElementById('formula'), {
-          displayMode: ${displayMode},
-          throwOnError: false,
-          errorColor: '#ef4444'
-        });
-      } catch (e) {
-        document.getElementById('formula').innerText = ${JSON.stringify(formula)};
-      }
-    });
-  </script>
-</body>
-</html>
-  `.trim();
-}
-
-interface KatexViewProps {
-  formula: string;
-  displayMode: boolean;
-}
-
-function KatexView({ formula, displayMode }: KatexViewProps) {
-  const html = generateKatexHtml(formula, displayMode);
-
-  if (displayMode) {
-    // Formule en bloc : prend toute la largeur, centrée
-    return (
-      <View style={styles.blockContainer}>
-        <WebView
-          source={{ html }}
-          style={styles.webviewBlock}
-          scrollEnabled={false}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
-        />
-      </View>
-    );
-  }
-
-  // Formule en ligne : s'intègre dans le flux de texte
-  return (
-    <View style={styles.inlineContainer}>
-      <WebView
-        source={{ html }}
-        style={styles.webviewInline}
-        scrollEnabled={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
-      />
-    </View>
-  );
 }
 
 export function MathFormula({ content, style, containerStyle }: MathFormulaProps) {
@@ -210,95 +256,63 @@ export function MathFormula({ content, style, containerStyle }: MathFormulaProps
 
   const parts = parseContent(content);
 
-  // Si c'est une seule formule en bloc, l'afficher directement
-  if (parts.length === 1 && parts[0].type === 'block') {
-    return (
-      <View style={[styles.singleBlockContainer, containerStyle]}>
-        <KatexView formula={parts[0].value} displayMode={true} />
-      </View>
-    );
-  }
+  // Construire le texte final en mélangeant tout
+  const elements: (string | JSX.Element)[] = [];
+  
+  parts.forEach((part, index) => {
+    if (part.type === 'text') {
+      // Garder le texte tel quel (déjà nettoyé dans parseContent)
+      elements.push(part.value);
+    } else if (part.isBlock) {
+      elements.push('\n');
+      elements.push(
+        <Text key={`block-${index}`} style={styles.blockFormula}>
+          {part.value}
+        </Text>
+      );
+      elements.push('\n');
+    } else {
+      // Formule en ligne - garder telle quelle
+      elements.push(
+        <Text key={`inline-${index}`} style={styles.inlineFormula}>
+          {part.value}
+        </Text>
+      );
+    }
+  });
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {parts.map((part, index) => {
-        if (part.type === 'text') {
-          return (
-            <Text key={`text-${index}`} style={[styles.inlineText, style]}>
-              {part.value}
-            </Text>
-          );
-        } else if (part.type === 'inline') {
-          return (
-            <KatexView
-              key={`inline-${index}`}
-              formula={part.value}
-              displayMode={false}
-            />
-          );
-        } else {
-          return (
-            <KatexView
-              key={`block-${index}`}
-              formula={part.value}
-              displayMode={true}
-            />
-          );
-        }
-      })}
+      <Text style={[styles.text, style]}>{elements}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end', // Aligner le texte et les formules en bas
-    justifyContent: 'flex-start',
     width: '100%',
-  },
-  singleBlockContainer: {
-    width: '100%',
-    alignItems: 'center',
   },
   text: {
     fontSize: 16,
     color: '#1e293b',
     lineHeight: 24,
   },
-  inlineText: {
+  inlineFormula: {
     fontSize: 16,
     color: '#1e293b',
-    lineHeight: 28, // Même hauteur de ligne que les formules inline
-    includeFontPadding: false,
-    textAlignVertical: 'center',
+    lineHeight: 24,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '600', // Gras
+    letterSpacing: -0.3, // Réduire légèrement l'espacement
   },
-  // Formule en ligne
-  inlineContainer: {
-    height: 28,
-    minWidth: 20,
-    marginHorizontal: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  webviewInline: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'transparent',
-  },
-  // Formule en bloc
-  blockContainer: {
-    width: '100%',
-    height: 50,
-    marginVertical: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  webviewBlock: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'transparent',
+  blockFormula: {
+    fontSize: 17,
+    color: '#1e293b',
+    lineHeight: 28,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '600', // Gras
+    letterSpacing: -0.3, // Réduire légèrement l'espacement
   },
 });
 

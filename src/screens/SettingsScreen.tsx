@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { importBuiltinDecks } from '../data/builtinDecks';
-import { resetDatabase, initDatabase } from '../storage/database';
+import { resetDatabase, initDatabase, getAllCards, saveSRSState } from '../storage/database';
+import { SRSCardState } from '../types';
+import { createNewCardState } from '../algorithms/srs';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -11,6 +13,7 @@ interface SettingsScreenProps {
 export function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [importing, setImporting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const handleImportDecks = async () => {
     Alert.alert(
@@ -63,6 +66,86 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
     );
   };
 
+  const handleGenerateRandomData = async () => {
+    Alert.alert(
+      'Générer des données de test',
+      'Cela va créer des révisions aléatoires pour simuler différentes progressions. Continuer ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Générer',
+          onPress: async () => {
+            try {
+              setGenerating(true);
+              await initDatabase();
+              await importBuiltinDecks();
+              
+              const cards = await getAllCards();
+              const now = Date.now();
+              
+              // Pour chaque carte, créer un état aléatoire
+              for (const card of cards) {
+                const rand = Math.random();
+                let state: SRSCardState;
+                
+                if (rand < 0.3) {
+                  // 30% : carte jamais vue (pas d'état SRS)
+                  continue;
+                } else if (rand < 0.5) {
+                  // 20% : nouvelle (is_new = 1)
+                  state = createNewCardState(card.id);
+                } else if (rand < 0.7) {
+                  // 20% : learning (1-2 répétitions)
+                  const reps = Math.random() < 0.5 ? 1 : 2;
+                  state = {
+                    cardId: card.id,
+                    easeFactor: 2.5,
+                    interval: reps === 1 ? 1 : 6,
+                    repetitions: reps,
+                    dueDate: now + Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000), // 0-7 jours
+                    isNew: false,
+                  };
+                } else if (rand < 0.85) {
+                  // 15% : due maintenant (à réviser)
+                  state = {
+                    cardId: card.id,
+                    easeFactor: 2.3 + Math.random() * 0.4,
+                    interval: Math.floor(Math.random() * 30) + 1,
+                    repetitions: Math.floor(Math.random() * 5) + 3,
+                    dueDate: now - Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000), // 0-3 jours passés
+                    isNew: false,
+                  };
+                } else {
+                  // 15% : mature (bien apprise)
+                  state = {
+                    cardId: card.id,
+                    easeFactor: 2.5 + Math.random() * 0.5,
+                    interval: Math.floor(Math.random() * 60) + 30,
+                    repetitions: Math.floor(Math.random() * 5) + 5,
+                    dueDate: now + Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000), // 0-30 jours futurs
+                    isNew: false,
+                  };
+                }
+                
+                await saveSRSState(state);
+              }
+              
+              Alert.alert(
+                'Succès', 
+                `Données de test générées !\n• ${Math.floor(cards.length * 0.3)} jamais vues\n• ${Math.floor(cards.length * 0.2)} nouvelles\n• ${Math.floor(cards.length * 0.35)} en cours\n• ${Math.floor(cards.length * 0.15)} matures`
+              );
+            } catch (error) {
+              Alert.alert('Erreur', 'Impossible de générer les données');
+              console.error(error);
+            } finally {
+              setGenerating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -104,6 +187,24 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
             </Text>
             <Text style={styles.buttonSubtitle}>
               Supprime tout (irréversible)
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.button, styles.debugButton]}
+          onPress={handleGenerateRandomData}
+          disabled={generating}
+        >
+          <View style={[styles.iconContainer, styles.debugIconContainer]}>
+            <MaterialCommunityIcons name="shuffle" size={24} color="#f59e0b" />
+          </View>
+          <View style={styles.buttonTextContainer}>
+            <Text style={[styles.buttonTitle, styles.debugText]}>
+              {generating ? 'Génération...' : '🔧 Générer données de test'}
+            </Text>
+            <Text style={styles.buttonSubtitle}>
+              Crée des révisions aléatoires (debug)
             </Text>
           </View>
         </TouchableOpacity>
@@ -225,6 +326,19 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: '#ef4444',
+  },
+  debugButton: {
+    shadowColor: '#fbbf24',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 0.3,
+  },
+  debugIconContainer: {
+    shadowColor: '#fde68a',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.5,
+  },
+  debugText: {
+    color: '#d97706',
   },
   infoBox: {
     backgroundColor: '#e0e5ec',
