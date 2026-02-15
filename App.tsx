@@ -12,6 +12,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { ReviewScreen } from './src/screens/ReviewScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { MathDebugScreen } from './src/screens/MathDebugScreen';
 
 // Database
 import { initDatabase } from './src/storage/database';
@@ -20,6 +21,7 @@ import { initDatabase } from './src/storage/database';
 export type RootStackParamList = {
   Main: undefined;
   Review: { deckId: string };
+  MathDebug: undefined;
 };
 
 export type MainTabParamList = {
@@ -151,6 +153,13 @@ export default function App() {
           <Stack.Screen 
             name="Review" 
             component={ReviewScreen}
+            options={{
+              animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen 
+            name="MathDebug" 
+            component={MathDebugScreen}
             options={{
               animation: 'slide_from_right',
             }}

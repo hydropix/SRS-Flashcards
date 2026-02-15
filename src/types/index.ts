@@ -111,3 +111,34 @@ export const SUBJECT_LABELS: Record<Subject, string> = {
   'technologie': 'Technologie',
   'anglais': 'Anglais',
 };
+
+/**
+ * Statistiques de temps d'étude personnalisées
+ * Stocke le temps moyen par carte pour chaque deck et matière
+ * en se basant sur l'historique réel de l'utilisateur
+ */
+export interface StudyTimeStats {
+  deckId: string;
+  subject: Subject;
+  avgTimePerCardSeconds: number;  // Temps moyen par carte (en secondes)
+  totalReviews: number;           // Nombre total de révisions pour ce deck
+  lastUpdated: number;            // Timestamp de dernière mise à jour
+}
+
+/**
+ * Paramètres de l'estimation de temps
+ * Valeur par défaut et configuration
+ */
+export const DEFAULT_TIME_PER_CARD_SECONDS = 30;  // 30 secondes par défaut
+export const MIN_TIME_PER_CARD_SECONDS = 10;      // Minimum 10 secondes
+export const MAX_TIME_PER_CARD_SECONDS = 120;     // Maximum 2 minutes
+
+/**
+ * Seuils pour les niveaux de charge de travail (en minutes)
+ * Utilisés par WorkloadIndicator
+ */
+export const WORKLOAD_THRESHOLDS = {
+  light: { maxCards: 10, maxMinutes: 10 },
+  moderate: { maxCards: 25, maxMinutes: 20 },
+  heavy: { maxCards: 50, maxMinutes: 40 },
+};

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Deck, EnhancedDeckStats, Subject, SUBJECT_COLORS, SUBJECT_LABELS } from '../types';
+import { Deck, EnhancedDeckStats, Subject, SUBJECT_COLORS, SUBJECT_LABELS, StudyTimeStats, DEFAULT_TIME_PER_CARD_SECONDS } from '../types';
 
 interface Recommendation {
   type: 'urgent' | 'new' | 'continue' | 'mastery' | 'break';
@@ -9,21 +9,41 @@ interface Recommendation {
   stats: EnhancedDeckStats;
   message: string;
   priority: number; // 1-10, plus c'est élevé, plus c'est important
+  estimatedMinutes: number; // Temps estimé pour cette recommandation
+  avgTimePerCard: number; // Temps moyen par carte (personnalisé ou défaut)
 }
 
 interface DailyRecommendationsProps {
   decks: Deck[];
   deckStats: Record<string, EnhancedDeckStats>;
+  studyTimeStats?: Record<string, StudyTimeStats>; // Stats de temps par deck
   onDeckPress: (deck: Deck) => void;
   onReviewAllPress?: (subject: Subject) => void;
 }
 
 /**
+ * Récupère le temps moyen par carte pour un deck
+ * Utilise les stats personnalisées si disponibles et fiables
+ */
+function getAverageTimePerCard(
+  deckId: string,
+  studyTimeStats: Record<string, StudyTimeStats> = {}
+): number {
+  const stats = studyTimeStats[deckId];
+  if (stats && stats.totalReviews >= 3) {
+    return stats.avgTimePerCardSeconds;
+  }
+  return DEFAULT_TIME_PER_CARD_SECONDS;
+}
+
+/**
  * Génère des recommandations intelligentes basées sur l'état des decks
+ * Calcule les temps estimés avec les statistiques personnalisées
  */
 function generateRecommendations(
   decks: Deck[],
-  deckStats: Record<string, EnhancedDeckStats>
+  deckStats: Record<string, EnhancedDeckStats>,
+  studyTimeStats: Record<string, StudyTimeStats> = {}
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
   
@@ -31,9 +51,14 @@ function generateRecommendations(
     const stats = deckStats[deck.id];
     if (!stats || stats.total === 0) return;
     
+    // Récupérer le temps moyen personnalisé pour ce deck
+    const avgTimePerCard = getAverageTimePerCard(deck.id, studyTimeStats);
+    
     // Priorité 1 : Cartes urgentes (dues maintenant)
     if (stats.due > 0) {
       const isLate = stats.due > 5; // Beaucoup de cartes en retard
+      const estimatedMinutes = Math.ceil((stats.due * avgTimePerCard) / 60);
+      
       recommendations.push({
         type: 'urgent',
         deck,
@@ -42,18 +67,26 @@ function generateRecommendations(
           ? `🔥 ${stats.due} cartes en attente - Prioritaire !`
           : `⚡ ${stats.due} carte${stats.due > 1 ? 's' : ''} à réviser`,
         priority: isLate ? 10 : 8,
+        estimatedMinutes,
+        avgTimePerCard,
       });
       return;
     }
     
     // Priorité 2 : Nouveau chapitre jamais commencé (max 2) - deviendra mode apprentissage
     if (!stats.hasBeenStarted && recommendations.filter(r => r.type === 'new').length < 2) {
+      // Pour les nouvelles cartes, on estime 5 cartes max en première session
+      const estimatedCards = Math.min(5, stats.total);
+      const estimatedMinutes = Math.ceil((estimatedCards * avgTimePerCard) / 60);
+      
       recommendations.push({
         type: 'new',
         deck,
         stats,
         message: `🚀 Commence l'apprentissage : ${stats.total} cartes`,
         priority: 6,
+        estimatedMinutes,
+        avgTimePerCard,
       });
       return;
     }
@@ -61,12 +94,16 @@ function generateRecommendations(
     // Priorité 3 : Proche de la maîtrise (80% -> objectif)
     if (stats.hasBeenStarted && !stats.isMastered && stats.maturePercent >= 60) {
       const remaining = Math.ceil((stats.total - stats.unseen) * (0.8 - stats.maturePercent / 100));
+      const estimatedMinutes = Math.ceil((remaining * avgTimePerCard) / 60);
+      
       recommendations.push({
         type: 'mastery',
         deck,
         stats,
         message: `🎯 Plus que ~${remaining} cartes pour maîtriser ce chapitre`,
         priority: 5,
+        estimatedMinutes,
+        avgTimePerCard,
       });
       return;
     }
@@ -92,33 +129,35 @@ function formatStudyTime(minutes: number): string {
 
 /**
  * Calcule la charge de travail totale (temps estimé)
+ * Utilise les statistiques personnalisées
  */
-function calculateWorkload(recommendations: Recommendation[]): number {
-  // Estimation : 30 secondes par carte
-  const totalCards = recommendations.reduce((sum, r) => {
-    if (r.type === 'urgent') return sum + r.stats.due;
-    if (r.type === 'new') return sum + Math.min(5, r.stats.total); // 5 cartes max pour nouveau
-    if (r.type === 'mastery') return sum + 5; // 5 cartes pour finaliser
-    return sum;
-  }, 0);
-  
-  return Math.ceil((totalCards * 30) / 60);
+function calculateWorkload(
+  recommendations: Recommendation[],
+  studyTimeStats: Record<string, StudyTimeStats> = {}
+): number {
+  return recommendations.reduce((sum, r) => sum + r.estimatedMinutes, 0);
 }
 
 export function DailyRecommendations({ 
   decks, 
   deckStats, 
+  studyTimeStats = {},
   onDeckPress,
   onReviewAllPress 
 }: DailyRecommendationsProps) {
-  const recommendations = generateRecommendations(decks, deckStats);
-  const workload = calculateWorkload(recommendations);
+  const recommendations = generateRecommendations(decks, deckStats, studyTimeStats);
+  const workload = calculateWorkload(recommendations, studyTimeStats);
   
   // Calcul des stats globales pour le header
   const totalDue = Object.values(deckStats).reduce((sum, s) => sum + s.due, 0);
   const totalNew = Object.values(deckStats).reduce((sum, s) => sum + s.discoveryCount, 0);
   const masteredCount = Object.values(deckStats).filter(s => s.isMastered).length;
   const totalDecks = Object.values(deckStats).filter(s => s.total > 0).length;
+  
+  // Déterminer si on utilise des stats personnalisées
+  const hasCustomStats = Object.keys(studyTimeStats).some(
+    deckId => studyTimeStats[deckId]?.totalReviews >= 3
+  );
   
   // Calcule le temps jusqu'à la prochaine révision
   const getNextReviewTime = (): string => {
@@ -164,7 +203,7 @@ export function DailyRecommendations({
       {/* Header avec charge de travail */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
+          <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>💡 Recommandations du jour</Text>
             <Text style={styles.headerSubtitle}>
               {totalDue > 0 
@@ -172,6 +211,9 @@ export function DailyRecommendations({
                 : totalNew > 0
                 ? `${totalNew} nouvelle${totalNew > 1 ? 's' : ''} carte${totalNew > 1 ? 's' : ''} à découvrir`
                 : 'Objectif du jour atteint !'}
+              {hasCustomStats && (
+                <Text style={styles.personalizedBadge}> ✓ personnalisé</Text>
+              )}
             </Text>
           </View>
           
@@ -208,6 +250,7 @@ export function DailyRecommendations({
         {recommendations.map((rec, index) => {
           const subjectColor = SUBJECT_COLORS[rec.deck.subject];
           const isFirst = index === 0;
+          const hasPersonalizedTime = rec.avgTimePerCard !== DEFAULT_TIME_PER_CARD_SECONDS;
           
           return (
             <TouchableOpacity
@@ -270,6 +313,18 @@ export function DailyRecommendations({
                     </View>
                   )}
                   
+                  {/* Temps estimé avec indicateur personnalisé */}
+                  <View style={styles.quickStat}>
+                    <MaterialCommunityIcons 
+                      name={hasPersonalizedTime ? "clock-check" : "clock-outline"} 
+                      size={12} 
+                      color={hasPersonalizedTime ? "#22c55e" : "#64748b"} 
+                    />
+                    <Text style={[styles.quickStatText, hasPersonalizedTime && styles.personalizedTimeText]}>
+                      ~{formatStudyTime(rec.estimatedMinutes)}
+                    </Text>
+                  </View>
+                  
                   {rec.stats.nextReviewDate && rec.stats.due === 0 && (
                     <View style={styles.quickStat}>
                       <MaterialCommunityIcons name="clock-outline" size={12} color="#3b82f6" />
@@ -331,21 +386,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+    gap: 12,
+  },
+  headerTextContainer: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#1e293b',
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748b',
+    flexWrap: 'wrap',
+  },
+  personalizedBadge: {
+    color: '#22c55e',
+    fontSize: 11,
+    fontWeight: '500',
   },
   progressCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#e0e5ec',
     justifyContent: 'center',
     alignItems: 'center',
@@ -355,14 +422,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
     flexDirection: 'row',
+    flexShrink: 0,
   },
   progressNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#6366f1',
   },
   progressLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748b',
   },
   dailyProgress: {
@@ -461,6 +529,10 @@ const styles = StyleSheet.create({
   quickStatText: {
     fontSize: 11,
     color: '#64748b',
+  },
+  personalizedTimeText: {
+    color: '#22c55e',
+    fontWeight: '500',
   },
   chevron: {
     marginLeft: 8,

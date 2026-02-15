@@ -1,19 +1,24 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, BackHandler, Alert } from 'react-native';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, BackHandler, Alert, Animated } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { getAllDecks, getEnhancedDeckStats, getTodayReviewCount, initDatabase, initializeDeckForLearning, getNewCardsLearnedToday } from '../storage/database';
-import { Deck, Subject, SUBJECT_COLORS, SUBJECT_LABELS, EnhancedDeckStats } from '../types';
+import { 
+  getAllDecks, 
+  getEnhancedDeckStats, 
+  getTodayReviewCount, 
+  initDatabase, 
+  initializeDeckForLearning, 
+  getNewCardsLearnedToday,
+  getAllStudyTimeStats,
+} from '../storage/database';
+import { Deck, Subject, SUBJECT_COLORS, SUBJECT_LABELS, EnhancedDeckStats, StudyTimeStats } from '../types';
 import { DeckCard } from '../components/DeckCard';
 import { WorkloadIndicator } from '../components/WorkloadIndicator';
+import { DailyRecommendations } from '../components/DailyRecommendations';
+import { NavigationState } from '../services/navigationState';
 
 interface HomeScreenProps {
   navigation: any;
-  route?: {
-    params?: {
-      selectedDeckId?: string;
-    };
-  };
 }
 
 // Icônes par matière
@@ -30,11 +35,117 @@ const SUBJECT_ICONS: Record<Subject, string> = {
 // Limite de nouvelles cartes par jour (mode apprentissage)
 const DAILY_NEW_CARDS_LIMIT = 10;
 
-export function HomeScreen({ navigation, route }: HomeScreenProps) {
-  const internalRoute = useRoute();
-  const selectedDeckIdFromNav = route?.params?.selectedDeckId || (internalRoute.params as any)?.selectedDeckId;
+/**
+ * Composant de badge animé avec effet pulse pour les folders de matières
+ */
+function PulsingFolderBadge({ 
+  count,
+  isPulsing 
+}: { 
+  count: number;
+  isPulsing: boolean;
+}) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isPulsing) {
+      pulseAnim.setValue(1);
+      glowAnim.setValue(0);
+      return;
+    }
+
+    // Animation de pulse simultanée pour l'échelle et la lueur
+    const pulse = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.15,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+
+    pulse.start();
+
+    return () => {
+      pulse.stop();
+    };
+  }, [isPulsing, pulseAnim, glowAnim]);
+
+  // Interpolation pour la lueur
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.8],
+  });
+
+  const glowScale = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.25],
+  });
+
+  if (isPulsing) {
+    return (
+      <View style={styles.pulsingBadgeContainer}>
+        {/* Cercle de lueur animé */}
+        <Animated.View
+          style={[
+            styles.badgeGlow,
+            { 
+              backgroundColor: '#ef4444',
+              opacity: glowOpacity,
+              transform: [{ scale: glowScale }],
+            }
+          ]}
+        />
+        {/* Badge avec animation d'échelle - uniquement le nombre */}
+        <Animated.View style={[
+          styles.folderBadge, 
+          styles.urgentBadge,
+          { transform: [{ scale: pulseAnim }] }
+        ]}>
+          <Text style={styles.folderBadgeText}>{count}</Text>
+        </Animated.View>
+      </View>
+    );
+  }
+
+  // Badge non-urgent (gris, sans animation) - uniquement le nombre si > 0
+  if (count > 0) {
+    return (
+      <View style={[styles.folderBadge, styles.waitingBadge]}>
+        <Text style={[styles.folderBadgeText, { color: '#64748b' }]}>{count}</Text>
+      </View>
+    );
+  }
+  
+  // Aucune carte en attente - pas de badge
+  return null;
+}
+
+export function HomeScreen({ navigation }: HomeScreenProps) {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [deckStats, setDeckStats] = useState<Record<string, EnhancedDeckStats>>(({}));
+  const [studyTimeStats, setStudyTimeStats] = useState<Record<string, StudyTimeStats>>({});
   const [todayReviews, setTodayReviews] = useState(0);
   const [newCardsToday, setNewCardsToday] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +164,14 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         stats[deck.id] = deckStat;
       }
       setDeckStats(stats);
+      
+      // Charger les statistiques de temps personnalisées
+      const timeStatsList = await getAllStudyTimeStats();
+      const timeStatsMap: Record<string, StudyTimeStats> = {};
+      timeStatsList.forEach(stat => {
+        timeStatsMap[stat.deckId] = stat;
+      });
+      setStudyTimeStats(timeStatsMap);
 
       const todayCount = await getTodayReviewCount();
       setTodayReviews(todayCount);
@@ -78,6 +197,7 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
       const onBackPress = () => {
         if (selectedSubject) {
           setSelectedSubject(null);
+          NavigationState.clear(); // Nettoyer pour ne pas revenir à ce sujet automatiquement
           return true; // Événement géré, ne pas quitter l'app
         }
         return false; // Comportement par défaut (quitter l'app)
@@ -89,15 +209,20 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
     }, [selectedSubject])
   );
 
-  // Ouvrir automatiquement la matière quand on revient d'un chapitre
-  useEffect(() => {
-    if (selectedDeckIdFromNav && decks.length > 0) {
-      const deck = decks.find(d => d.id === selectedDeckIdFromNav);
-      if (deck) {
-        setSelectedSubject(deck.subject);
-      }
-    }
-  }, [selectedDeckIdFromNav, decks]);
+  // Restaurer le dernier sujet sélectionné quand on revient sur l'écran (swipe back inclus)
+  useFocusEffect(
+    useCallback(() => {
+      // Petit délai pour s'assurer que la transition de navigation est terminée
+      const timer = setTimeout(() => {
+        const lastSubject = NavigationState.getLastSubject();
+        if (lastSubject) {
+          setSelectedSubject(lastSubject);
+        }
+      }, 50);
+      
+      return () => clearTimeout(timer);
+    }, [navigation])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -234,17 +359,9 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
         <Text style={styles.appSubtitle}>Brevet des Collèges</Text>
       </View>
 
-      {/* Navigation/breadcrumb si on est dans un folder */}
+      {/* Indicateur de matière si on est dans un folder */}
       {selectedSubject && (
         <View style={styles.breadcrumb}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => setSelectedSubject(null)}
-            activeOpacity={0.7}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={20} color="#6366f1" />
-            <Text style={styles.backText}>Retour aux matières</Text>
-          </TouchableOpacity>
           <View style={[styles.subjectIndicator, { backgroundColor: SUBJECT_COLORS[selectedSubject] }]}>
             <MaterialCommunityIcons 
               name={SUBJECT_ICONS[selectedSubject] as any} 
@@ -346,7 +463,11 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                     !hasCardsToReview && unstartedDecks === 0 && styles.reviewAllButtonDisabled,
                     !hasCardsToReview && unstartedDecks > 0 && { backgroundColor: '#e0f2fe' }
                   ]}
-                  onPress={() => hasCardsToReview && navigation.navigate('Review', { subjectId: selectedSubject, mode: 'review' })}
+                  onPress={() => {
+                    if (hasCardsToReview && selectedSubject) {
+                      navigation.navigate('Review', { subjectId: selectedSubject, mode: 'review' });
+                    }
+                  }}
                   activeOpacity={hasCardsToReview ? 0.8 : 1}
                   disabled={!hasCardsToReview}
                 >
@@ -411,6 +532,15 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
               deckStats={deckStats}
               todayReviewCount={todayReviews}
               dailyGoal={20}
+              studyTimeStats={studyTimeStats}
+            />
+            
+            {/* Recommandations du jour */}
+            <DailyRecommendations
+              decks={decks}
+              deckStats={deckStats}
+              studyTimeStats={studyTimeStats}
+              onDeckPress={handleDeckPress}
             />
             
             <Text style={styles.sectionTitle}>Explorer par matière</Text>
@@ -428,7 +558,10 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                 return (
                   <TouchableOpacity
                     key={subject}
-                    style={styles.subjectFolder}
+                    style={[
+                      styles.subjectFolder,
+                      !hasDueCards && styles.subjectFolderInactive
+                    ]}
                     onPress={() => setSelectedSubject(subject)}
                     activeOpacity={0.8}
                   >
@@ -442,48 +575,57 @@ export function HomeScreen({ navigation, route }: HomeScreenProps) {
                         />
                       </View>
                       
-                      <Text style={styles.folderName} numberOfLines={1}>
+                      <Text style={[
+                        styles.folderName, 
+                        !hasDueCards && styles.folderNameInactive
+                      ]} numberOfLines={1}>
                         {SUBJECT_LABELS[subject]}
                       </Text>
                       
                       <View style={styles.badgesContainer}>
-                        {/* Pastille : rouge si cartes dues, grise sinon */}
-                        {hasDueCards ? (
-                          <View style={[styles.folderBadge, styles.urgentBadge]}>
-                            <MaterialCommunityIcons name="alert" size={10} color="#fff" />
-                            <Text style={styles.folderBadgeText}>{stats.due}</Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.folderBadge, styles.waitingBadge]}>
-                            <MaterialCommunityIcons name="clock-outline" size={10} color="#94a3b8" />
-                          </View>
-                        )}
+                        {/* Badge animé si cartes dues, sinon badge gris */}
+                        <PulsingFolderBadge 
+                          count={stats.due}
+                          isPulsing={hasDueCards}
+                        />
                       </View>
                     </View>
                     
                     {/* Jauge de progression 3 couleurs */}
                     {stats.total > 0 && (
                       <View style={styles.progressBarContainer}>
-                        <View style={styles.progressBar}>
+                        <View style={[
+                          styles.progressBar,
+                          !hasDueCards && styles.progressBarInactive
+                        ]}>
                           {/* Cartes jamais faites - gris */}
                           {unseenPercent > 0 && (
                             <View style={[
                               styles.progressSegment, 
-                              { backgroundColor: '#94a3b8', width: `${unseenPercent}%` }
+                              { 
+                                backgroundColor: !hasDueCards ? '#cbd5e1' : '#94a3b8', 
+                                width: `${unseenPercent}%` 
+                              }
                             ]} />
                           )}
                           {/* Cartes en cours d'apprentissage - orange */}
                           {learningPercent > 0 && (
                             <View style={[
                               styles.progressSegment, 
-                              { backgroundColor: '#f59e0b', width: `${learningPercent}%` }
+                              { 
+                                backgroundColor: !hasDueCards ? '#fcd34d' : '#f59e0b', 
+                                width: `${learningPercent}%` 
+                              }
                             ]} />
                           )}
                           {/* Cartes maîtrisées - vert */}
                           {maturePercent > 0 && (
                             <View style={[
                               styles.progressSegment, 
-                              { backgroundColor: '#22c55e', width: `${maturePercent}%` }
+                              { 
+                                backgroundColor: !hasDueCards ? '#86efac' : '#22c55e', 
+                                width: `${maturePercent}%` 
+                              }
                             ]} />
                           )}
                         </View>
@@ -574,25 +716,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#d1d9e6',
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e0e5ec',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    shadowColor: '#a3b1c6',
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  backText: {
-    fontSize: 14,
-    color: '#6366f1',
-    fontWeight: '600',
-    marginLeft: 6,
-  },
+
   subjectIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -699,6 +823,12 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
+  subjectFolderInactive: {
+    backgroundColor: '#e6ebf2',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   folderHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -723,20 +853,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1e293b',
   },
+  folderNameInactive: {
+    color: '#64748b',
+  },
   badgesContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  folderBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+  // Badge avec animation pulse
+  pulsingBadgeContainer: {
+    width: 28,
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 5,
-    flexDirection: 'row',
-    gap: 2,
+  },
+  badgeGlow: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  folderBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
   },
   urgentBadge: {
     backgroundColor: '#ef4444',
@@ -748,15 +892,15 @@ const styles = StyleSheet.create({
   },
   waitingBadge: {
     backgroundColor: '#e0e5ec',
-    shadowColor: '#ffffff',
-    shadowOffset: { width: -1, height: -1 },
-    shadowOpacity: 0.5,
+    shadowColor: '#a3b1c6',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.3,
     shadowRadius: 2,
     elevation: 2,
   },
   folderBadgeText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   // Jauge de progression
@@ -769,6 +913,9 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     flexDirection: 'row',
     overflow: 'hidden',
+  },
+  progressBarInactive: {
+    backgroundColor: '#d8dde6',
   },
   progressSegment: {
     height: '100%',

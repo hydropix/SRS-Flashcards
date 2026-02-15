@@ -4,7 +4,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import { Card, Deck, SRSCardState, ReviewLog, Subject, EnhancedDeckStats } from '../types';
+import { Card, Deck, SRSCardState, ReviewLog, Subject, EnhancedDeckStats, StudyTimeStats, DEFAULT_TIME_PER_CARD_SECONDS } from '../types';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -65,6 +65,18 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     CREATE INDEX IF NOT EXISTS idx_srs_due ON srs_states(due_date);
     CREATE INDEX IF NOT EXISTS idx_logs_card ON review_logs(card_id);
     CREATE INDEX IF NOT EXISTS idx_logs_date ON review_logs(timestamp);
+    
+    -- Table pour les statistiques de temps personnalisées
+    CREATE TABLE IF NOT EXISTS study_time_stats (
+      deck_id TEXT PRIMARY KEY,
+      subject TEXT NOT NULL,
+      avg_time_per_card_seconds REAL DEFAULT ${DEFAULT_TIME_PER_CARD_SECONDS},
+      total_reviews INTEGER DEFAULT 0,
+      last_updated INTEGER NOT NULL,
+      FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_study_time_subject ON study_time_stats(subject);
   `);
   
   console.log('✅ Base de données initialisée');
@@ -744,6 +756,181 @@ export async function initializeDeckForLearning(deckId: string, limit: number): 
 }
 
 /**
+ * Met à jour les statistiques de temps pour un deck
+ * Calcule le temps moyen par carte basé sur l'historique des révisions
+ */
+export async function updateStudyTimeStats(deckId: string, subject: Subject): Promise<void> {
+  const database = await initDatabase();
+  
+  // Calculer le temps moyen pour ce deck
+  const result = await database.getFirstAsync<{
+    avg_time: number;
+    count: number;
+  }>(
+    `SELECT 
+      AVG(response_time_ms) as avg_time,
+      COUNT(*) as count
+     FROM review_logs
+     WHERE card_id IN (SELECT id FROM cards WHERE deck_id = ?)
+     AND response_time_ms IS NOT NULL
+     AND response_time_ms > 0
+     AND response_time_ms < 300000`,
+    deckId
+  );
+  
+  if (result && result.avg_time !== null && result.count >= 3) {
+    // Convertir ms en secondes
+    const avgTimeSeconds = Math.round(result.avg_time / 1000);
+    
+    // Limiter entre 10s et 120s
+    const clampedTime = Math.max(10, Math.min(120, avgTimeSeconds));
+    
+    await database.runAsync(
+      `INSERT OR REPLACE INTO study_time_stats 
+       (deck_id, subject, avg_time_per_card_seconds, total_reviews, last_updated)
+       VALUES (?, ?, ?, ?, ?)`,
+      deckId,
+      subject,
+      clampedTime,
+      result.count,
+      Date.now()
+    );
+    
+    console.log(`⏱️ Stats temps mises à jour pour ${deckId}: ${clampedTime}s/carte (${result.count} révisions)`);
+  }
+}
+
+/**
+ * Récupère les statistiques de temps pour un deck
+ * Retourne la valeur par défaut si pas encore de données
+ */
+export async function getStudyTimeStats(deckId: string, subject: Subject): Promise<StudyTimeStats> {
+  const database = await initDatabase();
+  
+  const row = await database.getFirstAsync<{
+    deck_id: string;
+    subject: string;
+    avg_time_per_card_seconds: number;
+    total_reviews: number;
+    last_updated: number;
+  }>(
+    'SELECT * FROM study_time_stats WHERE deck_id = ?',
+    deckId
+  );
+  
+  if (row) {
+    return {
+      deckId: row.deck_id,
+      subject: row.subject as Subject,
+      avgTimePerCardSeconds: row.avg_time_per_card_seconds,
+      totalReviews: row.total_reviews,
+      lastUpdated: row.last_updated,
+    };
+  }
+  
+  // Retourner les valeurs par défaut
+  return {
+    deckId,
+    subject,
+    avgTimePerCardSeconds: DEFAULT_TIME_PER_CARD_SECONDS,
+    totalReviews: 0,
+    lastUpdated: Date.now(),
+  };
+}
+
+/**
+ * Récupère le temps moyen par carte pour une matière entière
+ * Moyenne pondérée des decks de cette matière
+ */
+export async function getSubjectAverageTime(subject: Subject): Promise<number> {
+  const database = await initDatabase();
+  
+  const result = await database.getFirstAsync<{
+    weighted_avg: number;
+    total_reviews: number;
+  }>(
+    `SELECT 
+      SUM(avg_time_per_card_seconds * total_reviews) / SUM(total_reviews) as weighted_avg,
+      SUM(total_reviews) as total_reviews
+     FROM study_time_stats
+     WHERE subject = ? AND total_reviews > 0`,
+    subject
+  );
+  
+  if (result && result.weighted_avg !== null && result.total_reviews >= 3) {
+    return Math.round(result.weighted_avg);
+  }
+  
+  return DEFAULT_TIME_PER_CARD_SECONDS;
+}
+
+/**
+ * Calcule le temps estimé de révision pour une liste de decks
+ * Utilise les statistiques personnalisées si disponibles
+ */
+export async function estimateStudyTimeForDecks(
+  deckStats: Record<string, EnhancedDeckStats>,
+  getDeckSubject: (deckId: string) => Subject
+): Promise<{
+  totalMinutes: number;
+  breakdown: Record<string, { cards: number; minutes: number; avgTimeSeconds: number }>;
+}> {
+  const breakdown: Record<string, { cards: number; minutes: number; avgTimeSeconds: number }> = {};
+  let totalSeconds = 0;
+  
+  for (const [deckId, stats] of Object.entries(deckStats)) {
+    if (stats.due === 0) continue;
+    
+    const subject = getDeckSubject(deckId);
+    const timeStats = await getStudyTimeStats(deckId, subject);
+    
+    // Utiliser le temps personnalisé ou la moyenne de la matière
+    let avgTimeSeconds = timeStats.avgTimePerCardSeconds;
+    if (timeStats.totalReviews < 3) {
+      // Pas assez d'historique pour ce deck, utiliser la moyenne de la matière
+      avgTimeSeconds = await getSubjectAverageTime(subject);
+    }
+    
+    const deckSeconds = stats.due * avgTimeSeconds;
+    totalSeconds += deckSeconds;
+    
+    breakdown[deckId] = {
+      cards: stats.due,
+      minutes: Math.ceil(deckSeconds / 60),
+      avgTimeSeconds,
+    };
+  }
+  
+  return {
+    totalMinutes: Math.ceil(totalSeconds / 60),
+    breakdown,
+  };
+}
+
+/**
+ * Récupère toutes les statistiques de temps (pour debug/export)
+ */
+export async function getAllStudyTimeStats(): Promise<StudyTimeStats[]> {
+  const database = await initDatabase();
+  
+  const rows = await database.getAllAsync<{
+    deck_id: string;
+    subject: string;
+    avg_time_per_card_seconds: number;
+    total_reviews: number;
+    last_updated: number;
+  }>('SELECT * FROM study_time_stats ORDER BY subject, deck_id');
+  
+  return rows.map(row => ({
+    deckId: row.deck_id,
+    subject: row.subject as Subject,
+    avgTimePerCardSeconds: row.avg_time_per_card_seconds,
+    totalReviews: row.total_reviews,
+    lastUpdated: row.last_updated,
+  }));
+}
+
+/**
  * Réinitialise toutes les données (pour les tests)
  */
 export async function resetDatabase(): Promise<void> {
@@ -751,6 +938,7 @@ export async function resetDatabase(): Promise<void> {
   await database.execAsync(`
     DELETE FROM review_logs;
     DELETE FROM srs_states;
+    DELETE FROM study_time_stats;
     DELETE FROM cards;
     DELETE FROM decks;
   `);

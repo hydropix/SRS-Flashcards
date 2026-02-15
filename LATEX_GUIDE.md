@@ -1,162 +1,178 @@
-# Guide d'utilisation des formules LaTeX
+# Guide KaTeX - Formules dans les FlashCards
 
-Ce guide explique comment écrire des formules mathématiques et physiques dans vos flashcards.
+## Regle n1 : les backslashes
 
-## Installation
-
-La bibliothèque `react-native-katex` est déjà installée. Aucune configuration supplémentaire n'est nécessaire.
-
-## Syntaxe de base
-
-### Formule en ligne (dans le texte)
-
-Utilisez un seul `$` avant et après la formule :
+Dans les fichiers TypeScript, chaque `\` LaTeX doit etre ecrit `\\`.
 
 ```typescript
-question: `Calculer : $\\frac{3}{4} + \\frac{5}{6}$`,
-answer: `$x^2 + 5x + 6 = (x + 2)(x + 3)$`,
+// CORRECT - 2 backslashes dans le code source
+question: `Calculer $\\frac{3}{4} + \\frac{5}{6}$`
+
+// FAUX - 4 backslashes = formule cassee
+question: `Calculer $\\\\frac{3}{4} + \\\\frac{5}{6}$`
+
+// FAUX - 1 backslash = JS interprete \f comme caractere special
+question: `Calculer $\frac{3}{4} + \frac{5}{6}$`
 ```
 
-### Formule en bloc (centrée, sur sa propre ligne)
+**Pourquoi ?** JavaScript utilise `\` comme caractere d'echappement.
+`\\frac` dans le code source → `\frac` a l'execution → KaTeX comprend.
 
-Utilisez deux `$$` avant et après la formule :
+## Delimiteurs
+
+| Syntaxe | Mode | Usage |
+|---------|------|-------|
+| `$...$` | Inline | Formule dans le texte |
+| `$$...$$` | Block | Formule centree, seule sur sa ligne |
 
 ```typescript
-explanation: `D'après le théorème de Pythagore :
-$$BC^2 = AB^2 + AC^2$$
-$$BC^2 = 6^2 + 8^2 = 36 + 64 = 100$$`,
+// Inline : dans une phrase
+question: `Calculer $\\frac{3}{4}$ en decimal.`
+
+// Block : formule mise en valeur
+explanation: `D'apres Pythagore :
+$$BC^2 = AB^2 + AC^2$$`
 ```
 
-## Exemples courants
+## Commandes courantes (niveau Brevet)
 
 ### Fractions
-```latex
-$\\frac{a}{b}$           →  a/b
-$\\frac{3}{4}$           →  3/4
-$\\frac{x^2 + 1}{x - 1}$ →  (x²+1)/(x-1)
+```typescript
+`$\\frac{a}{b}$`              // a/b
+`$\\frac{x^2 + 1}{x - 1}$`   // fraction complexe
 ```
 
-### Puissances
-```latex
-$x^2$    →  x²
-$x^{10}$ →  x¹⁰
-$2^5$    →  2⁵
+### Puissances et indices
+```typescript
+`$x^2$`         // x au carre
+`$x^{10}$`      // exposant > 1 chiffre : accolades obligatoires
+`$x_1$`         // indice simple
+`$x_{i+1}$`     // indice complexe : accolades obligatoires
 ```
 
 ### Racines
-```latex
-$\\sqrt{x}$     →  √x
-$\\sqrt{16}$    →  √16
-$\\sqrt[3]{x}$  →  ³√x (racine cubique)
+```typescript
+`$\\sqrt{25}$`       // racine carree
+`$\\sqrt[3]{27}$`    // racine cubique
 ```
 
-### Indices
-```latex
-$x_1$       →  x₁
-$x_{i+1}$   →  xᵢ₊₁
-$a_{ij}$    →  aᵢⱼ
-```
-
-### Fonctions trigonométriques
-```latex
-$\\cos(x)$  →  cos(x)
-$\\sin(x)$  →  sin(x)
-$\\tan(x)$  →  tan(x)
+### Trigonometrie
+```typescript
+`$\\cos(\\theta)$`   // cos(theta)
+`$\\sin(\\alpha)$`   // sin(alpha)
+`$\\tan(x)$`         // tan(x)
 ```
 
 ### Lettres grecques
-```latex
-$\\pi$      →  π
-$\\alpha$   →  α
-$\\beta$    →  β
-$\\theta$   →  θ
-$\\Delta$   →  Δ
-```
-
-### Symboles mathématiques
-```latex
-$\\times$    →  ×
-$\\div$      →  ÷
-$\\pm$       →  ±
-$\\leq$      →  ≤
-$\\geq$      →  ≥
-$\\neq$      →  ≠
-$\\approx$   →  ≈
-$\\infty$    →  ∞
-$\\rightarrow$ →  →
-```
-
-### Équations sur plusieurs lignes
 ```typescript
-explanation: `Résolution :
-$$3x + 7 = 22$$
-$$3x = 22 - 7$$
-$$3x = 15$$
-$$x = \\frac{15}{3} = 5$$`,
+`$\\pi$`     // pi
+`$\\alpha$`  // alpha
+`$\\beta$`   // beta
+`$\\theta$`  // theta
+`$\\Delta$`  // Delta (majuscule)
 ```
 
-### Texte dans les formules
-```latex
-$v = \\frac{d}{t} \\text{ où } d \\text{ est la distance}$`
-→ v = d/t où d est la distance
+### Operateurs et symboles
+```typescript
+`$\\times$`       // x (multiplication)
+`$\\div$`         // division
+`$\\pm$`          // plus ou moins
+`$\\leq$`         // inferieur ou egal
+`$\\geq$`         // superieur ou egal
+`$\\neq$`         // different de
+`$\\approx$`      // environ egal
+`$\\infty$`       // infini
+`$\\in$`          // appartient a
+`$\\cup$`         // union
+`$\\rightarrow$`  // fleche droite
+```
+
+### Texte dans une formule
+```typescript
+`$v = \\frac{d}{t} \\text{ ou } d \\text{ est la distance}$`
+```
+
+### Espaces dans les formules
+```typescript
+`$a \\, b$`    // petit espace
+`$a \\; b$`    // espace moyen
 ```
 
 ## Exemples complets de cartes
 
-### Théorème de Pythagore
+### Exemple simple
 ```typescript
 {
-  id: 'math-pyt-exemple',
+  id: 'math-fraction-add',
+  deckId: 'math-fractions',
+  question: `Calculer $\\frac{3}{4} + \\frac{5}{6}$`,
+  answer: `$\\frac{3}{4} + \\frac{5}{6} = \\frac{19}{12}$`,
+  explanation: `On cherche le denominateur commun (12) :
+$\\frac{3}{4} = \\frac{9}{12}$ et $\\frac{5}{6} = \\frac{10}{12}$
+$$\\frac{9}{12} + \\frac{10}{12} = \\frac{19}{12}$$`,
+}
+```
+
+### Exemple Pythagore
+```typescript
+{
+  id: 'math-pyth-ex1',
   deckId: 'math-pythagore',
-  question: `ABC est rectangle en A avec $AB = 3$ cm et $AC = 4$ cm. Calculer $BC$.`,
+  question: `ABC rectangle en A, $AB = 3$ cm, $AC = 4$ cm. Calculer $BC$.`,
   answer: `$BC = 5$ cm`,
-  explanation: `D'après le théorème de Pythagore :
+  explanation: `Theoreme de Pythagore :
 $$BC^2 = AB^2 + AC^2$$
 $$BC^2 = 3^2 + 4^2 = 9 + 16 = 25$$
-$$BC = \\sqrt{25} = 5$ cm`,
+$$BC = \\sqrt{25} = 5 \\text{ cm}$$`,
 }
 ```
 
-### Identité remarquable
+### Exemple avec multiplication
 ```typescript
 {
-  id: 'math-id-exemple',
-  deckId: 'math-calcul-litteral',
-  question: `Développer $(x + 3)^2$`,
-  answer: `$(x + 3)^2 = x^2 + 6x + 9$`,
-  explanation: `Identité remarquable :
-$$(a + b)^2 = a^2 + 2ab + b^2$$
-Avec $a = x$ et $b = 3$ :
-$$(x + 3)^2 = x^2 + 2 \\times x \\times 3 + 3^2 = x^2 + 6x + 9$$`,
+  id: 'math-decomp-60',
+  deckId: 'math-arithmetique',
+  question: `Decomposer 60 en produit de facteurs premiers.`,
+  answer: `$60 = 2^2 \\times 3 \\times 5$`,
+  explanation: `$60 = 2 \\times 30 = 2 \\times 2 \\times 15 = 2^2 \\times 3 \\times 5$`,
 }
 ```
 
-### Trigonométrie
+## Checklist avant de soumettre une carte
+
+1. Chaque commande LaTeX a exactement `\\` (pas `\`, pas `\\\\`)
+2. Chaque `$` ouvrant a son `$` fermant
+3. Chaque `$$` ouvrant a son `$$` fermant
+4. Les accolades sont equilibrees : `{` et `}`
+5. Les exposants/indices de plus d'un caractere sont entre accolades : `^{10}` pas `^10`
+
+## Page de test
+
+L'ecran **Test Math** (`src/screens/MathDebugScreen.tsx`) permet de verifier le rendu.
+Il affiche 8 exemples avec comparaison WebView KaTeX vs Unicode.
+
+## Composants
+
+| Composant | Fichier | Usage |
+|-----------|---------|-------|
+| `MathFormulaSimple` | `src/components/MathFormulaSimple.tsx` | Composant principal (WebView + KaTeX CDN) |
+| `MathFormula` | `src/components/MathFormula.tsx` | Version complete avec plus d'options |
+
+### Import
 ```typescript
-{
-  id: 'math-trig-exemple',
-  deckId: 'math-trigonometrie',
-  question: `Dans un triangle rectangle, $\cos(\\theta) = 0,6$. Calculer $\sin(\\theta)$.`,
-  answer: `$\\sin(\\theta) = 0,8$`,
-  explanation: `Relation fondamentale :
-$$\\cos^2(\\theta) + \\sin^2(\\theta) = 1$$
-$$0,6^2 + \\sin^2(\\theta) = 1$$
-$$\\sin^2(\\theta) = 1 - 0,36 = 0,64$$
-$$\\sin(\\theta) = \\sqrt{0,64} = 0,8$$`,
-}
+import { MathFormulaSimple } from '../components/MathFormulaSimple';
+
+<MathFormulaSimple content={card.question} fontSize={17} color="#1e293b" />
 ```
 
-## Points importants
+## Fonctionnement technique
 
-1. **Toujours doubler les backslashes** : En TypeScript/JavaScript, le backslash `\` est un caractère d'échappement. Donc pour écrire `\frac`, vous devez taper `\\frac`.
+1. Le contenu est parse pour separer texte et formules (`$...$` / `$$...$$`)
+2. Chaque formule est rendue dans une WebView avec KaTeX charge depuis CDN
+3. La WebView communique sa hauteur et largeur pour s'adapter au contenu
+4. Si le chargement echoue (pas de reseau, timeout 4s), un fallback Unicode est affiche
 
-2. **Espaces** : Les espaces dans les formules LaTeX sont ignorés. Utilisez `\\,` pour un petit espace ou `\\;` pour un espace moyen.
+## Reference
 
-3. **Texte normal dans les formules** : Utilisez `\\text{...}` pour insérer du texte normal dans une formule.
-
-4. **Si une formule ne s'affiche pas** : Vérifiez que vous avez bien fermé tous les `$` ou `$$`.
-
-## Ressources
-
-- [Documentation KaTeX](https://katex.org/docs/supported.html) : Liste complète des symboles et fonctions supportés
-- [Éditeur en ligne KaTeX](https://katex.org/) : Tester vos formules avant de les intégrer
+- [Fonctions KaTeX supportees](https://katex.org/docs/supported.html)
+- [Editeur KaTeX en ligne](https://katex.org/)

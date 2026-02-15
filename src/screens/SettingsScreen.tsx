@@ -208,6 +208,23 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
             </Text>
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.button, styles.debugButton, styles.debugPurpleButton]}
+          onPress={() => navigation.navigate('MathDebug')}
+        >
+          <View style={[styles.iconContainer, styles.debugIconContainer, styles.debugPurpleIconContainer]}>
+            <MaterialCommunityIcons name="math-integral" size={24} color="#8b5cf6" />
+          </View>
+          <View style={styles.buttonTextContainer}>
+            <Text style={[styles.buttonTitle, styles.debugPurpleText]}>
+              🔬 Test rendu mathématiques
+            </Text>
+            <Text style={styles.buttonSubtitle}>
+              Comparer WebView, Unicode, SVG, etc.
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -339,6 +356,19 @@ const styles = StyleSheet.create({
   },
   debugText: {
     color: '#d97706',
+  },
+  debugPurpleButton: {
+    shadowColor: '#a78bfa',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 0.3,
+  },
+  debugPurpleIconContainer: {
+    shadowColor: '#ddd6fe',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 0.5,
+  },
+  debugPurpleText: {
+    color: '#7c3aed',
   },
   infoBox: {
     backgroundColor: '#e0e5ec',

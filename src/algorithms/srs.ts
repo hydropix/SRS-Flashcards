@@ -9,7 +9,7 @@
  * - Si réponse facile: intervalle augmente, EF augmente légèrement
  */
 
-import { ReviewRating, SRSCardState } from '../types';
+import { ReviewRating, SRSCardState, DEFAULT_TIME_PER_CARD_SECONDS } from '../types';
 
 // Configuration de l'algorithme
 const MIN_EASE_FACTOR = 1.3;
@@ -153,9 +153,10 @@ export function calculateLearningStats(states: SRSCardState[]) {
 
 /**
  * Estime le temps de révision restant
- * (approximation: 30s par carte)
+ * Utilise la valeur par défaut configurée (30s par carte)
+ * Pour une estimation personnalisée, utiliser estimateStudyTimeForDecks() de database.ts
  */
 export function estimateStudyTime(dueCardsCount: number): number {
   // En minutes
-  return Math.ceil(dueCardsCount * 0.5);
+  return Math.ceil((dueCardsCount * DEFAULT_TIME_PER_CARD_SECONDS) / 60);
 }

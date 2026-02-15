@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Deck, EnhancedDeckStats } from '../types';
 
@@ -62,6 +62,7 @@ function getDeckState(stats: DeckStats): {
   actionText: string;
   subText: string;
   progressSegments: { color: string; percent: number }[];
+  isUrgent: boolean;
 } {
   const total = stats.total || 0;
   const unseen = stats.unseen || 0;
@@ -97,6 +98,7 @@ function getDeckState(stats: DeckStats): {
       progressSegments: [
         { color: '#22c55e', percent: 100 },
       ],
+      isUrgent: false,
     };
   }
   
@@ -112,6 +114,7 @@ function getDeckState(stats: DeckStats): {
       progressSegments: [
         { color: '#67e8f9', percent: 100 },  // Cyan clair
       ],
+      isUrgent: false,
     };
   }
   
@@ -128,7 +131,7 @@ function getDeckState(stats: DeckStats): {
       
       if (unseenInDeck > 0 && newInLearning === 0) {
         // Cartes jamais vues mais pas encore ajoutées à l'apprentissage (limite atteinte)
-        newText = `${discoveryCount} carte${discoveryCount > 1 ? 's' : ''} en file d'attente (max 10/jour)`;
+        newText = `${discoveryCount} en attente (max 10/jour)`;
       } else if (newInLearning > 0 && unseenInDeck > 0) {
         // Mix : certaines en apprentissage, d'autres en attente
         newText = `${newInLearning} à apprendre · ${unseenInDeck} en attente`;
@@ -152,6 +155,7 @@ function getDeckState(stats: DeckStats): {
         { color: '#f59e0b', percent: learningPercent + newPercent },
         { color: '#cbd5e1', percent: unseenPercent },
       ].filter(s => s.percent > 0),
+      isUrgent: due > 0, // Urgent uniquement s'il y a des cartes dues
     };
   }
   
@@ -159,7 +163,7 @@ function getDeckState(stats: DeckStats): {
   return {
     state: 'sleeping',
     badgeIcon: 'sleep',
-    badgeColor: '#3b82f6',
+    badgeColor: '#94a3b8', // Gris plus neutre pour le sommeil
     badgeText: 'zZ',
     actionText: 'S\'entraîner',
     subText: nextReviewDate 
@@ -170,19 +174,137 @@ function getDeckState(stats: DeckStats): {
       { color: '#f59e0b', percent: learningPercent + newPercent },
       { color: '#cbd5e1', percent: unseenPercent },
     ].filter(s => s.percent > 0),
+    isUrgent: false,
   };
+}
+
+/**
+ * Composant de badge animé avec effet pulse
+ */
+function PulsingBadge({ 
+  icon, 
+  color, 
+  text, 
+  isPulsing 
+}: { 
+  icon: string; 
+  color: string; 
+  text: string; 
+  isPulsing: boolean;
+}) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isPulsing) {
+      pulseAnim.setValue(1);
+      glowAnim.setValue(0);
+      return;
+    }
+
+    // Animation de pulse simultanée pour l'échelle et la lueur
+    const pulse = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.15,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+
+    pulse.start();
+
+    return () => {
+      pulse.stop();
+    };
+  }, [isPulsing, pulseAnim, glowAnim]);
+
+  // Interpolation pour la lueur
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.8],
+  });
+
+  const glowScale = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.15],
+  });
+
+  return (
+    <View style={styles.badgeWrapper}>
+      {/* Cercle de lueur animé (derrière le badge) */}
+      {isPulsing && (
+        <Animated.View
+          style={[
+            styles.badgeGlow,
+            { 
+              backgroundColor: color,
+              opacity: glowOpacity,
+              transform: [{ scale: glowScale }],
+            }
+          ]}
+        />
+      )}
+      
+      {/* Badge principal avec animation d'échelle */}
+      <Animated.View
+        style={[
+          styles.badge,
+          { 
+            backgroundColor: color,
+            shadowColor: color,
+            transform: [{ scale: pulseAnim }],
+          }
+        ]}
+      >
+        <MaterialCommunityIcons 
+          name={icon as any} 
+          size={16} 
+          color="#fff" 
+        />
+        {text && text !== 'zZ' && (
+          <Text style={styles.badgeText}>{text}</Text>
+        )}
+      </Animated.View>
+    </View>
+  );
 }
 
 export function DeckCard({ deck, stats, onPress }: DeckCardProps) {
   const deckState = getDeckState(stats);
   const total = stats.total || 0;
   
+  // Détermine si le deck est en sommeil (pour appliquer le style atténué)
+  const isSleeping = deckState.state === 'sleeping';
+  const isMastered = deckState.state === 'mastered';
+  const isInactive = isSleeping || isMastered;
+  
   // Détermine la couleur de la bordure gauche selon l'état
   const getBorderColor = () => {
     switch (deckState.state) {
       case 'locked': return '#06b6d4';  // Cyan vif pour nouveau contenu
       case 'discovery': return deckState.badgeColor; // rouge ou orange
-      case 'sleeping': return '#3b82f6';
+      case 'sleeping': return '#94a3b8'; // Gris pour sommeil
       case 'mastered': return '#22c55e';
       default: return deck.color;
     }
@@ -196,32 +318,47 @@ export function DeckCard({ deck, stats, onPress }: DeckCardProps) {
       style={[
         styles.container, 
         { borderLeftColor: getBorderColor() },
-        !isClickable && styles.containerDisabled
+        !isClickable && styles.containerDisabled,
+        isInactive && styles.containerInactive,
       ]} 
       onPress={onPress}
       activeOpacity={isClickable ? 0.8 : 1}
       disabled={!isClickable}
     >
-      <View style={styles.content}>
+      <View style={[
+        styles.content,
+        isInactive && styles.contentInactive
+      ]}>
         {/* Nom du deck */}
-        <Text style={styles.name}>{deck.name}</Text>
+        <Text style={[
+          styles.name,
+          isInactive && styles.textInactive
+        ]}>{deck.name}</Text>
         
         {/* Description si présente */}
         {deck.description && (
-          <Text style={styles.description} numberOfLines={1}>
+          <Text style={[
+            styles.description, 
+            isInactive && styles.descriptionInactive
+          ]} numberOfLines={1}>
             {deck.description}
           </Text>
         )}
         
         {/* Barre de progression segmentée */}
-        <View style={styles.progressBar}>
+        <View style={[
+          styles.progressBar,
+          isInactive && styles.progressBarInactive
+        ]}>
           {deckState.progressSegments.map((segment, index) => (
             <View
               key={index}
               style={[
                 styles.progressSegment,
                 { 
-                  backgroundColor: segment.color,
+                  backgroundColor: isInactive 
+                    ? adjustColorOpacity(segment.color, 0.5) 
+                    : segment.color,
                   width: `${segment.percent}%`,
                   borderTopLeftRadius: index === 0 ? 3 : 0,
                   borderBottomLeftRadius: index === 0 ? 3 : 0,
@@ -237,36 +374,60 @@ export function DeckCard({ deck, stats, onPress }: DeckCardProps) {
         <View style={styles.statsRow}>
           {/* Total cartes */}
           <View style={styles.statItem}>
-            <MaterialCommunityIcons name="cards-outline" size={12} color="#64748b" />
-            <Text style={styles.statText}>{total}</Text>
+            <MaterialCommunityIcons 
+              name="cards-outline" 
+              size={12} 
+              color={isInactive ? '#94a3b8' : '#64748b'} 
+            />
+            <Text style={[
+              styles.statText,
+              isInactive && styles.statTextInactive
+            ]}>{total}</Text>
           </View>
           
           {/* Texte d'état */}
-          <Text style={styles.subText} numberOfLines={1}>
+          <Text style={[
+            styles.subText, 
+            isInactive && styles.subTextInactive
+          ]} numberOfLines={1}>
             {deckState.subText}
           </Text>
         </View>
       </View>
       
-      {/* Badge droit */}
-      <View style={[
-        styles.badge,
-        { 
-          backgroundColor: deckState.badgeColor,
-          shadowColor: deckState.badgeColor,
-        }
-      ]}>
-        <MaterialCommunityIcons 
-          name={deckState.badgeIcon as any} 
-          size={16} 
-          color="#fff" 
-        />
-        {deckState.state !== 'sleeping' && deckState.state !== 'mastered' && (
-          <Text style={styles.badgeText}>{deckState.badgeText}</Text>
-        )}
-      </View>
+      {/* Badge droit avec animation pulse si urgent */}
+      <PulsingBadge
+        icon={deckState.badgeIcon}
+        color={deckState.badgeColor}
+        text={deckState.badgeText}
+        isPulsing={deckState.isUrgent}
+      />
     </TouchableOpacity>
   );
+}
+
+/**
+ * Ajuste l'opacité d'une couleur hexadécimale
+ */
+function adjustColorOpacity(hexColor: string, opacity: number): string {
+  // Pour les couleurs hex simples (#RRGGBB)
+  if (hexColor.startsWith('#') && hexColor.length === 7) {
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    
+    // Mélanger avec du gris clair (#e0e5ec - la couleur de fond)
+    const bgR = 224;
+    const bgG = 229;
+    const bgB = 236;
+    
+    const newR = Math.round(r * opacity + bgR * (1 - opacity));
+    const newG = Math.round(g * opacity + bgG * (1 - opacity));
+    const newB = Math.round(b * opacity + bgB * (1 - opacity));
+    
+    return `rgb(${newR}, ${newG}, ${newB})`;
+  }
+  return hexColor;
 }
 
 const styles = StyleSheet.create({
@@ -288,10 +449,20 @@ const styles = StyleSheet.create({
   containerDisabled: {
     opacity: 0.6,
   },
+  containerInactive: {
+    opacity: 0.75,
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
+    backgroundColor: '#e6ebf2', // Légèrement différent du fond
+  },
   content: {
     flex: 1,
     paddingVertical: 16,
     paddingHorizontal: 16,
+  },
+  contentInactive: {
+    opacity: 0.85,
   },
   name: {
     fontSize: 17,
@@ -299,10 +470,17 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     marginBottom: 2,
   },
+  textInactive: {
+    color: '#64748b',
+    fontWeight: '600',
+  },
   description: {
     fontSize: 12,
     color: '#64748b',
     marginBottom: 10,
+  },
+  descriptionInactive: {
+    color: '#94a3b8',
   },
   progressBar: {
     height: 6,
@@ -311,6 +489,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     overflow: 'hidden',
     marginBottom: 10,
+  },
+  progressBarInactive: {
+    backgroundColor: '#d8dde6',
   },
   progressSegment: {
     height: '100%',
@@ -330,11 +511,31 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '500',
   },
+  statTextInactive: {
+    color: '#94a3b8',
+  },
   subText: {
     flex: 1,
     fontSize: 12,
     color: '#475569',
     fontWeight: '500',
+  },
+  subTextInactive: {
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  badgeWrapper: {
+    width: 44,
+    height: 44,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeGlow: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   badge: {
     width: 44,
@@ -342,7 +543,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
     flexDirection: 'column',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,

@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Flashcard } from '../components/Flashcard';
 import { RatingButtons } from '../components/RatingButtons';
 import { ProgressBar } from '../components/ProgressBar';
-import { Card, ReviewRating } from '../types';
+import { Card, ReviewRating, Subject } from '../types';
 import { 
   getCardById, 
   getDueCardsForDeck,
@@ -18,8 +18,11 @@ import {
   getAllSRSStates,
   getCardsByDeck,
   getDecksBySubject,
+  getDeckById,
+  updateStudyTimeStats,
 } from '../storage/database';
 import { calculateNextReview, createNewCardState } from '../algorithms/srs';
+import { NavigationState } from '../services/navigationState';
 
 interface ReviewScreenProps {
   navigation: any;
@@ -43,6 +46,9 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
   const [loading, setLoading] = useState(true);
   const [sessionStats, setSessionStats] = useState({ again: 0, hard: 0, good: 0, easy: 0 });
   const [sessionComplete, setSessionComplete] = useState(false);
+  
+  // Timer pour le temps de réponse
+  const [cardStartTime, setCardStartTime] = useState<number>(0);
   
   // Infos pour l'écran "session terminée"
   const [sessionInfo, setSessionInfo] = useState<{
@@ -151,6 +157,7 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
     const card = await getCardById(cardId);
     setCurrentCard(card);
     setRevealed(false);
+    setCardStartTime(Date.now());  // Démarrer le timer
   };
 
   useFocusEffect(
@@ -159,12 +166,32 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
     }, [deckId])
   );
 
+  // Sauvegarder le sujet actuel pour pouvoir revenir au bon chapitre après swipe back
+  useEffect(() => {
+    const saveSubject = async () => {
+      if (subjectId) {
+        // Mode révision par matière
+        NavigationState.setLastSubject(subjectId as Subject);
+      } else if (deckId && deckId !== 'all') {
+        // Mode révision par deck - charger le sujet du deck
+        const deck = await getDeckById(deckId);
+        if (deck) {
+          NavigationState.setLastSubject(deck.subject);
+        }
+      }
+    };
+    saveSubject();
+  }, [deckId, subjectId]);
+
   const handleFlip = () => {
     setRevealed(prev => !prev);
   };
 
   const handleRate = async (rating: ReviewRating) => {
     if (!currentCard) return;
+
+    // Calculer le temps de réponse (depuis l'affichage de la carte)
+    const responseTimeMs = Date.now() - cardStartTime;
 
     // En mode révision SRS normal, on enregistre et met à jour l'état
     if (!isPracticeMode) {
@@ -173,6 +200,7 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
         cardId: currentCard.id,
         rating,
         timestamp: Date.now(),
+        responseTimeMs,  // Enregistrer le temps de réponse
       };
       await logReview(reviewLog);
 
@@ -183,6 +211,12 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
       
       const newState = calculateNextReview(currentState, rating);
       await saveSRSState(newState);
+      
+      // Mettre à jour les statistiques de temps pour ce deck
+      const deck = await getDeckById(currentCard.deckId);
+      if (deck) {
+        await updateStudyTimeStats(deck.id, deck.subject);
+      }
     }
     // En mode entraînement (practice), on ne touche pas à l'état SRS
     // L'utilisateur peut s'entraîner sans affecter sa progression
@@ -334,14 +368,7 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
             </View>
           )}
 
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.navigate('Main', { screen: 'Home', params: { selectedDeckId: deckId } })}
-          >
-            <Text style={styles.backButtonText}>
-              {deckId && deckId !== 'all' ? 'Retour au chapitre' : 'Retour à l\'accueil'}
-            </Text>
-          </TouchableOpacity>
+
         </View>
       </View>
     );
@@ -359,9 +386,6 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>←</Text>
-        </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>
             {isPracticeMode ? 'Découverte' : 'Révision'}
@@ -370,7 +394,6 @@ export function ReviewScreen({ navigation, route }: ReviewScreenProps) {
             <Text style={styles.headerSubtitle}>Apprends à ton rythme</Text>
           )}
         </View>
-        <View style={styles.placeholder} />
       </View>
 
       {/* Progression */}
@@ -445,23 +468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#e0e5ec',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#a3b1c6',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  backBtnText: {
-    color: '#1e293b',
-    fontSize: 20,
-  },
+
   headerTitleContainer: {
     alignItems: 'center',
   },
@@ -475,9 +482,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
   },
-  placeholder: {
-    width: 40,
-  },
+
   cardContainer: {
     flex: 1,
     paddingHorizontal: 20,
@@ -592,22 +597,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-  backButton: {
-    backgroundColor: '#e0e5ec',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 16,
-    shadowColor: '#a3b1c6',
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  backButtonText: {
-    color: '#4338ca',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+
   noCardText: {
     color: '#475569',
   },
