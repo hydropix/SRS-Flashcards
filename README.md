@@ -113,7 +113,3 @@ MIT License - Free to use and modify
 
 ---
 
-**Good luck with your exams! 💪**
-
-*** Translated with www.DeepL.com/Translator (free version) ***
-
