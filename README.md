@@ -1,116 +1,119 @@
-# 🎓 DNB FlashCards
+# 🎓 SRS FlashCards
 
-Application mobile de flashcards optimisée pour la révision du **Brevet des Collèges** (France).
+Mobile flashcard app optimized for reviewing for the **Brevet des Collèges** (France).
 
-Basée sur la science de l'apprentissage :
-- **Effet de test** (Roediger & Karpicke, 2006)
-- **Répétition espacée** (Cepeda et al., 2006)
+Based on learning science:
+- **Testing effect** (Roediger & Karpicke, 2006)
+- **Spaced repetition** (Cepeda et al., 2006)
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-- 📚 **Decks complets** : Maths, Français, Histoire-Géo, SVT, Physique-Chimie, Technologie, Anglais
-- 🧠 **Algorithme SM-2** : Répétition espacée optimisée
-- 📴 **Offline first** : Fonctionne sans connexion
-- 📊 **Statistiques** : Suivi de progression et série de jours
-- 🎯 **Mode révision** : Test actif avec feedback immédiat
+- 📚 **Complete decks**: Math, French, History-Geography, Life and Earth Sciences, Physics-Chemistry, Technology, English
+- 🧠 **SM-2 algorithm**: Optimized spaced repetition
+- 📴 **Offline first**: Works without an internet connection
+- 📊 **Statistics**: Progress tracking and streak days
+- 🎯 **Review mode**: Active testing with immediate feedback
 
 ## 🚀 Installation
 
-### Prérequis
+### Prerequisites
 - Node.js (v18+)
-- Android Studio (pour l'émulateur) ou un téléphone Android
+- Android Studio (for the emulator) or an Android phone
 
-### Démarrage rapide
+### Quick start
 
 ```bash
-# Cloner le repo
+# Clone the repo
 git clone https://github.com/hydropix/DNB_FlashCard.git
 cd DNB_FlashCard
 
-# Installer les dépendances
+# Install dependencies
 npm install
 
-# Lancer sur Android
+# Launch on Android
 npm run android
 ```
 
-## 📱 Utilisation
+## 📱 Usage
 
-1. **Premier lancement** : Va dans "Paramètres" → "Importer les decks du Brevet"
-2. **Réviser** : Sélectionne un deck ou clique sur "Réviser tout"
-3. **Notation** : Sois honnête !
-   - ❌ **À revoir** : Tu ne savais pas
-   - 😅 **Difficile** : Tu as eu du mal
-   - 👍 **Correct** : Tu connaissais
-   - ⭐ **Facile** : Réponse immédiate
-4. **Répéter** : Revient demain pour les cartes dues
+1. **First launch**: Go to "Settings" → "Import Brevet decks"
+2. **Review**: Select a deck or click "Review all"
+3. **Rating**: Be honest!
+   - ❌ **To review**: You didn't know
+   - 😅 **Difficult**: You had trouble
+   - 👍 **Correct**: You knew
+   - ⭐ **Easy**: Immediate answer
+4. **Repeat**: Come back tomorrow for the cards due
 
 ## 🏗️ Architecture
 
 ```
 src/
 ├── algorithms/
-│   └── srs.ts          # Algorithme SM-2 (SuperMemo 2)
+│   └── srs.ts          # SM-2 (SuperMemo 2) algorithm
 ├── components/
-│   ├── Flashcard.tsx   # Composant carte avec flip
+│   ├── Flashcard.tsx   # Flip card component
 │   ├── RatingButtons.tsx
 │   ├── DeckCard.tsx
 │   └── ProgressBar.tsx
 ├── data/
-│   └── builtinDecks.ts # +100 cartes du brevet
+│   └── builtinDecks.ts # +100 cards from the patent
 ├── screens/
 │   ├── HomeScreen.tsx
 │   ├── ReviewScreen.tsx
 │   ├── StatsScreen.tsx
 │   └── SettingsScreen.tsx
 ├── storage/
-│   └── database.ts     # SQLite avec expo-sqlite
+│   └── database.ts     # SQLite with expo-sqlite
 └── types/
-    └── index.ts        # Types TypeScript
+    └── index.ts        # TypeScript types
 ```
 
-## 🧪 Algorithme SM-2
+## 🧪 SM-2 Algorithm
 
-L'algorithme calcule l'intervalle optimal entre les révisions :
+The algorithm calculates the optimal interval between reviews:
 
-1. **Nouvelle carte** : Intervalle = 1 jour
-2. **2ème réussite** : Intervalle = 6 jours
-3. **Réussites suivantes** : Intervalle × Ease Factor
-4. **Échec** : Retour à intervalle = 1 jour
+1. **New card**: Interval = 1 day
+2. **2nd success**: Interval = 6 days
+3. **Subsequent successes**: Interval × Ease Factor
+4. **Failure**: Return to interval = 1 day
 
-**Ease Factor** ajusté selon tes performances :
-- Défaut : 2.5
-- Minimum : 1.3
-- Ajusté à chaque révision
+**Ease Factor** adjusted according to your performance:
+- Default: 2.5
+- Minimum: 1.3
+- Adjusted with each review
 
-## 📖 Contenu du Brevet
+## 📖 Patent Content
 
-| Matière | Nombre de cartes |
+| Subject | Number of cards |
 |---------|-----------------|
-| Maths - Algèbre | 15 |
-| Maths - Géométrie | 14 |
-| Français - Grammaire | 10 |
-| Français - Méthodologie | 5 |
-| Histoire-Géographie | 10 |
-| SVT | 9 |
-| Physique-Chimie | 12 |
-| Technologie | 6 |
-| Anglais | 6 |
+| Math - Algebra | 15 |
+| Math - Geometry | 14 |
+| English - Grammar | 10 |
+| English - Methodology | 5 |
+| History-Geography | 10 |
+| Life and Earth Sciences | 9 |
+| Physics-Chemistry | 12 |
+| Technology | 6 |
+| English | 6 |
 | **Total** | **+100** |
 
 ## 🔮 Roadmap
 
-- [ ] Synchronisation cloud (Supabase)
-- [ ] Notifications push pour les révisions
-- [ ] Mode examen blanc
-- [ ] Ajout de ses propres cartes
-- [ ] Support images/LaTeX
-- [ ] Widget Android
+- [ ] Cloud synchronization (Supabase)
+- [ ] Push notifications for revisions
+- [ ] Mock exam mode
+- [ ] Add your own cards
+- [ ] Image/LaTeX support
+- [ ] Android widget
 
-## 📝 Licence
+## 📝 License
 
-MIT License - Libre d'utilisation et de modification
+MIT License - Free to use and modify
 
 ---
 
-**Bon courage pour le Brevet ! 💪**
+**Good luck with your exams! 💪**
+
+*** Translated with www.DeepL.com/Translator (free version) ***
+
