@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView } from 'react-native';
 import { Card } from '../types';
-import { MathFormulaSimple } from './MathFormulaSimple';
+import { MathRenderer } from './MathRenderer';
 
 // VERSION DEBUG - Affiche le contenu brut pour diagnostic
 function MathFormulaDebug({ content, label }: { content: string; label?: string }) {
@@ -161,9 +161,9 @@ export function Flashcard({ card, onFlip, revealed }: FlashcardProps) {
             {DEBUG_MODE ? (
               <MathFormulaDebug content={card.question} label="Question (debug)" />
             ) : (
-              <MathFormulaSimple
+              <MathRenderer
                 content={card.question}
-                style={styles.formulaContainer}
+                containerStyle={styles.formulaContainer}
                 fontSize={20}
                 color="#1e293b"
               />
@@ -192,18 +192,18 @@ export function Flashcard({ card, onFlip, revealed }: FlashcardProps) {
               </>
             ) : (
               <>
-                <MathFormulaSimple
+                <MathRenderer
                   content={card.answer}
-                  style={styles.formulaContainer}
+                  containerStyle={styles.formulaContainer}
                   fontSize={18}
                   color="#1e293b"
                 />
                 {card.explanation && (
                   <View style={styles.explanationContainer}>
                     <Text style={styles.explanationLabel}>Explication</Text>
-                    <MathFormulaSimple
+                    <MathRenderer
                       content={card.explanation}
-                      style={styles.explanationFormulaContainer}
+                      containerStyle={styles.explanationFormulaContainer}
                       fontSize={15}
                       color="#475569"
                     />
@@ -246,8 +246,9 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,
@@ -256,7 +257,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   labelContainer: {
     backgroundColor: '#e0e5ec',
@@ -289,7 +291,8 @@ const styles = StyleSheet.create({
   },
   formulaContainer: {
     width: '100%',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
   },
   question: {
     fontSize: 20,
@@ -306,8 +309,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   explanationContainer: {
-    marginTop: 24,
-    padding: 20,
+    marginTop: 16,
+    padding: 14,
     backgroundColor: '#e0e5ec',
     borderRadius: 20,
     shadowColor: '#ffffff',
@@ -316,6 +319,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
     width: '100%',
+    overflow: 'hidden',
   },
   explanationLabel: {
     fontSize: 14,

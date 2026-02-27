@@ -221,7 +221,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               🔬 Test rendu mathématiques
             </Text>
             <Text style={styles.buttonSubtitle}>
-              Comparer WebView, Unicode, SVG, etc.
+              Tester l'affichage des formules LaTeX
             </Text>
           </View>
         </TouchableOpacity>

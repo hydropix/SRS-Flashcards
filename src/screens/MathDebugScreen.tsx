@@ -1,6 +1,6 @@
 /**
  * Écran de debug pour tester les formules mathématiques
- * VERSION SIMPLIFIÉE - Teste WebView réel + Unicode + Packages installés
+ * Utilise le nouveau composant MathRenderer (conversion LaTeX → Unicode)
  */
 
 import React, { useState } from 'react';
@@ -14,15 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { MathFormulaSimple } from '../components/MathFormulaSimple';
-
-// Essayer d'importer Caporeista (optionnel)
-let CaporeistaModule: any = null;
-try {
-  CaporeistaModule = require('@caporeista/reactnative-math-latex').default;
-} catch (e) {
-  // Package non installé
-}
+import { MathRenderer, latexToUnicode } from '../components/MathRenderer';
 
 interface MathDebugScreenProps {
   navigation: any;
@@ -37,46 +29,16 @@ const TEST_EXAMPLES = [
   { id: 6, name: 'Pi', content: '$\\pi \\approx 3.14$' },
   { id: 7, name: 'Puissance', content: '$x^2 + y^2 = z^2$' },
   { id: 8, name: 'Ensemble', content: '$x \\in A \\cup B$' },
+  { id: 9, name: 'Somme', content: '$\\sum_{i=1}^{n} x_i$' },
+  { id: 10, name: 'Intégrale', content: '$\\int_{a}^{b} f(x) dx$' },
+  { id: 11, name: 'Limite', content: '$\\lim_{x \\to \\infty} f(x)$' },
+  { id: 12, name: 'Grec', content: '$\\alpha + \\beta = \\gamma$' },
 ];
-
-// Composant Unicode simple
-const UnicodeFormula: React.FC<{ content: string }> = ({ content }) => {
-  const unicode = content
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
-    .replace(/\\sqrt\{([^}]+)\}/g, '√($1)')
-    .replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β').replace(/\\gamma/g, 'γ')
-    .replace(/\\theta/g, 'θ').replace(/\\pi/g, 'π')
-    .replace(/\\times/g, '×').replace(/\\cdot/g, '·')
-    .replace(/\\leq/g, '≤').replace(/\\geq/g, '≥')
-    .replace(/\\in/g, '∈').replace(/\\cup/g, '∪')
-    .replace(/\\infty/g, '∞')
-    .replace(/\\text\{([^}]+)\}/g, '$1')
-    .replace(/[${}]/g, '');
-
-  return (
-    <View style={styles.unicodeBox}>
-      <Text style={styles.unicodeText}>{unicode}</Text>
-    </View>
-  );
-};
-
-// Placeholder si package pas installé
-const NotInstalled: React.FC<{ name: string; cmd: string }> = ({ name, cmd }) => (
-  <View style={styles.notInstalledBox}>
-    <MaterialCommunityIcons name="package-variant" size={32} color="#f59e0b" />
-    <Text style={styles.notInstalledTitle}>{name}</Text>
-    <Text style={styles.notInstalledText}>Non installé</Text>
-    <View style={styles.cmdBox}>
-      <Text style={styles.cmdText}>{cmd}</Text>
-    </View>
-  </View>
-);
 
 export function MathDebugScreen({ navigation }: MathDebugScreenProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [showWebView, setShowWebView] = useState(true);
-  const [showUnicode, setShowUnicode] = useState(true);
-  const [showCaporeista, setShowCaporeista] = useState(false);
+  const [showRenderer, setShowRenderer] = useState(true);
+  const [showRawUnicode, setShowRawUnicode] = useState(false);
 
   const current = TEST_EXAMPLES[selectedIndex];
 
@@ -115,64 +77,65 @@ export function MathDebugScreen({ navigation }: MathDebugScreenProps) {
         </View>
 
         {/* Toggles */}
-        <Text style={styles.sectionTitle}>🔧 Solutions</Text>
+        <Text style={styles.sectionTitle}>🔧 Options d'affichage</Text>
         <View style={styles.toggleRow}>
-          <TouchableOpacity style={[styles.toggle, showWebView && styles.toggleActive]} onPress={() => setShowWebView(!showWebView)}>
-            <Text style={[styles.toggleText, showWebView && styles.toggleTextActive]}>WebView</Text>
+          <TouchableOpacity 
+            style={[styles.toggle, showRenderer && styles.toggleActive]} 
+            onPress={() => setShowRenderer(!showRenderer)}
+          >
+            <Text style={[styles.toggleText, showRenderer && styles.toggleTextActive]}>
+              MathRenderer
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toggle, showUnicode && styles.toggleActiveGreen]} onPress={() => setShowUnicode(!showUnicode)}>
-            <Text style={[styles.toggleText, showUnicode && styles.toggleTextActive]}>Unicode</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.toggle, showCaporeista && styles.toggleActiveOrange]} onPress={() => setShowCaporeista(!showCaporeista)}>
-            <Text style={[styles.toggleText, showCaporeista && styles.toggleTextActive]}>Caporeista</Text>
+          <TouchableOpacity 
+            style={[styles.toggle, showRawUnicode && styles.toggleActiveGreen]} 
+            onPress={() => setShowRawUnicode(!showRawUnicode)}
+          >
+            <Text style={[styles.toggleText, showRawUnicode && styles.toggleTextActive]}>
+              Unicode brut
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Résultats */}
         <Text style={styles.sectionTitle}>🎨 Rendu</Text>
 
-        {showWebView && (
+        {showRenderer && (
           <View style={styles.resultCard}>
             <View style={[styles.resultHeader, { backgroundColor: '#ede9fe' }]}>
-              <MaterialCommunityIcons name="web" size={18} color="#7c3aed" />
-              <Text style={styles.resultTitle}>1. WebView + KaTeX (recommandé)</Text>
+              <MaterialCommunityIcons name="calculator-variant" size={18} color="#7c3aed" />
+              <Text style={styles.resultTitle}>MathRenderer (Unicode)</Text>
             </View>
             <View style={styles.resultContent}>
-              <MathFormulaSimple content={current.content} fontSize={17} />
+              <MathRenderer content={current.content} fontSize={18} />
             </View>
           </View>
         )}
 
-        {showUnicode && (
+        {showRawUnicode && (
           <View style={styles.resultCard}>
             <View style={[styles.resultHeader, { backgroundColor: '#d1fae5' }]}>
-              <MaterialCommunityIcons name="format-text" size={18} color="#059669" />
-              <Text style={styles.resultTitle}>2. Unicode (fallback)</Text>
+              <MaterialCommunityIcons name="code-tags" size={18} color="#059669" />
+              <Text style={styles.resultTitle}>Unicode converti (texte brut)</Text>
             </View>
             <View style={styles.resultContent}>
-              <UnicodeFormula content={current.content} />
+              <View style={styles.unicodeBox}>
+                <Text style={styles.unicodeText}>
+                  {latexToUnicode(current.content.replace(/\$\$?/g, ''))}
+                </Text>
+              </View>
             </View>
           </View>
         )}
 
-        {showCaporeista && (
-          <View style={styles.resultCard}>
-            <View style={[styles.resultHeader, { backgroundColor: '#fef3c7' }]}>
-              <MaterialCommunityIcons name="package-variant" size={18} color="#d97706" />
-              <Text style={styles.resultTitle}>3. @caporeista/reactnative-math-latex</Text>
-            </View>
-            <View style={styles.resultContent}>
-              {CaporeistaModule ? (
-                <CaporeistaModule>{current.content}</CaporeistaModule>
-              ) : (
-                <NotInstalled 
-                  name="Caporeista" 
-                  cmd="npm install @caporeista/reactnative-math-latex" 
-                />
-              )}
-            </View>
-          </View>
-        )}
+        {/* Info */}
+        <View style={styles.infoCard}>
+          <MaterialCommunityIcons name="information" size={20} color="#6366f1" />
+          <Text style={styles.infoText}>
+            Le composant MathRenderer convertit automatiquement le LaTeX en caractères Unicode. 
+            Pas besoin de WebView ni de connexion internet !
+          </Text>
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -278,8 +241,6 @@ const styles = StyleSheet.create({
   },
   toggleActive: { backgroundColor: '#8b5cf6' },
   toggleActiveGreen: { backgroundColor: '#10b981' },
-  toggleActiveOrange: { backgroundColor: '#f59e0b' },
-  toggleActiveBlue: { backgroundColor: '#3b82f6' },
   toggleText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   toggleTextActive: { color: '#fff' },
   resultCard: {
@@ -322,36 +283,22 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     color: '#1e293b',
   },
-  notInstalledBox: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#fef3c7',
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#f59e0b',
-    borderStyle: 'dashed',
-  },
-  notInstalledTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#92400e',
+    borderLeftWidth: 3,
+    borderLeftColor: '#6366f1',
     marginTop: 8,
   },
-  notInstalledText: {
-    fontSize: 13,
-    color: '#a16207',
-    marginTop: 2,
-  },
-  cmdBox: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-  },
-  cmdText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 12,
-    color: '#92400e',
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#4338ca',
+    lineHeight: 20,
   },
 });
 
